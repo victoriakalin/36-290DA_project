@@ -1,0 +1,453 @@
+---
+title: "Star-Luminous Red Galaxy Separation Data Analysis"
+author: "Victoria Kalinovich"
+date: "11/30/2018"
+output:
+  html_document:
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+rm(list=ls())   
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/PROJECT_DATASETS/STAR_LRG_SEPARATION/Star_LRG_eBOSS_WISE.Rdata"
+load(url(file.path))
+rm(file.path)
+
+```
+
+# Introduction 
+In order to take advantage of simulations and astronomical data, it is important for astromoners to know how far objects are from earth. This project looks to explore the distances of astronomical objects from earth, and how this is related to various qualities that are easier to measure. We will look into a measurement of disance, in the form of redshift, and its relationship to object magnitude at various bandpasses. Redshift is a measurement of distance found by comparing the wavelength of the photon when it leaves the galaxy, versus its wavelength as it is measured on Earth. Our objects consist of both luminious red galaxies, which are outside of the Milky Way galaxy, and stars, inside the galaxy. Despite their differences in location, some stars and LRGs have similar colors and magnitudes. Thus, we hope to classify the objects as either stars or luminous red galaxies and predict the redshift using our various predictor variables. 
+
+**In this project I will attempt to discover the relationship between an objects class (either Star or LRG), redshift and its colors and magnitude at different bandpasses. **
+
+## Data Description
+This Data was taken from the Extended Baryon Oscillation Spectroscopic Survey (eBOSS). This was a part of the third phase of the Sloan Digital Sky Survey (SDSS-III). The data are measurements from 45,664 physical objects. These objects are either stars in the Milky Way galaxy, or luminous red galaxies (LRGs). There are seven predictors, different magnitudes of the object measured at different bandpasses. However, we dropped one predictor due to issues with the data. There is one response variable, redshift. Redshift refers the amount of a shift toward longer wavelengths due to objects being very far away. Redshift ($z$) is defined as:
+
+
+ $$1 + z = \frac{\lambda_{\rm obs}}{\lambda_{\rm emit}}$$
+    
+
+Even though we only have one measured response value, we will also be using an objects class as a response variable. This is found by filtering objects which have a redshift less than or equal to 0.01, which is essentially 0, as stars. Then, objects with redshift greater than 0.01 are LRGs because at that point we are confident the object is not in the Milky Way. 
+
+Below we include the predictors we used in our final model. We focused on mostly colors, which are found by taking the difference of magnitudes at various bandpasses. 
+
+| Variable      | Description  |
+| ------------- |:------------------------------------------------------------------------| 
+| mag.i  | The magnitude of the object in SDSS bandpass at 850nm, "infrared"|  
+| color.ug | The difference in magnitude of the object ultraviolet and infrared bandpasses | 
+| color.gr  | The different in magnitude of the objects in green and red bandpass|  
+| color.ri | The different in magnitude of the objects in red and infrared bandpass| 
+| color.iz  |The different in magnitude of the objects two different infrared bandpass | 
+| color.zW1  |The different in magnitude of the objects in an infrared SDSS and WISE mid-infrared bandpass |  
+
+# EDA
+
+## Redshift 
+```{r,warning=FALSE,message=FALSE,echo=FALSE}
+library(ggplot2)
+hist = ggplot(mapping = aes(x=response))+xlab("Redshift")+ylab("Frequency")+ggtitle("Redshift Histogram")+geom_histogram(color = "#00BFC4",fill = "darkgrey")
+hist
+```
+
+
+
+
+\newline
+The histogram of redshift shows bimodiality. The majority of the redshift data is symmetrically centered about 0.75, however there is a subset of the data that seems centered around 0. This cluster of data shows the population of stars we will attempt to classify and filter out before our prediction of redshift.  
+
+ 
+```{r,include=FALSE}
+#Preprocessing 
+
+predictors = predictors[1:6]
+
+#Make a variable storing the class of objects
+set.seed(505)
+
+w.lgr = which(response>0.01)
+w.star = which(response<=.01)
+s = sample(length(w.lgr),length(w.star))
+predictors.lgr = predictors[w.lgr[s],]
+response.lgr   = response[w.lgr[s]]
+predictors.star = predictors[w.star,]
+response.star  = response[w.star]
+predictorSub = data.frame(scale(rbind(predictors.lgr,predictors.star)))
+responseSub   = c(response.lgr,response.star)
+
+#Making even Factor response variable-- "class"
+response.new = rep("LRG",length(response))
+w = which(response<=.01)
+response.new[w] = "STAR"
+classSub = factor(response.new)
+
+#Making even binary response variable-- "responseBin"
+response.bin = rep(1,length(responseSub))
+w = which(responseSub<=.01)
+response.bin[w] = 0
+responseBin = response.bin
+cat("Sample size: ",length(response),"\n")
+
+
+#Making a full factor response "class"
+class = ifelse(response>.01,yes="LRG",no = "STAR")
+class = factor(class)
+#Making a full binary response "respBin"
+respBin=  ifelse(response>.01,yes=1,no = 0)
+
+length(w.star)
+length(w.lgr)
+
+predictors = predictors[1:6]
+```
+
+
+## Predictors 
+```{r, include=FALSE}
+## Transforming Color 
+library(plyr)
+library(tidyverse)
+predWithColorsSub <- mutate(predictorSub,color.ug = mag.u-mag.g, color.gr = mag.g-mag.r, color.ri = mag.r-mag.i, color.iz = mag.i-mag.z, color.zW1 = mag.z - mag.W1)
+predColorRSub = select(predWithColorsSub, -mag.u,-mag.g,-mag.i,-mag.z,- mag.W1)
+predColorISub = select(predWithColorsSub, -mag.u,-mag.g,-mag.r,-mag.z,- mag.W1)
+predWithColors <- mutate(predictors,color.ug = mag.u-mag.g, color.gr = mag.g-mag.r, color.ri = mag.r-mag.i, color.iz = mag.i-mag.z, color.zW1 = mag.z - mag.W1)
+predColorR = select(predWithColors, -mag.u,-mag.g,-mag.i,-mag.z,- mag.W1)
+predColorI = select(predWithColors, -mag.u,-mag.g,-mag.r,-mag.z,- mag.W1)
+```
+
+
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(gridExtra)
+hist1 = ggplot(mapping = aes(x=predColorI$color.ri))+xlab("Color.ri")+ylab("Frequency")+ggtitle("Color.ri Histogram")+geom_histogram()
+hist2 =ggplot(mapping = aes(x=predColorI$color.zW1))+xlab("Color.zW1")+ylab("Frequency")+ggtitle("Color.zW1 Histogram")+geom_histogram()
+
+grid.arrange(hist1,hist2,nrow=1)
+
+```
+
+
+\newline
+
+
+Here we see a general shape of the predictors. On the left is color.ri. This distribution is strongly skewed right, similarly to color.iz, and mag.i. On the right is color.zW1, this distribution is relatively symmetric and normal, relatively similar to color.ug and color.gr.
+
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(gridExtra)
+set.seed(505)
+sub =  sample(nrow(predictors),.2*nrow(predictors),replace=FALSE)
+
+addTrans <- function(color,trans)
+{
+  #Function borrowed from stack Overflow user Sacha Epskamp
+  # This function adds transparancy to a color.
+  # Define transparancy with an integer between 0 and 255
+  # 0 being fully transparant and 255 being fully visable
+  # Works with either color and trans a vector of equal length,
+  # or one of the two of length 1.
+
+  if (length(color)!=length(trans)&!any(c(length(color),length(trans))==1)) stop("Vector lengths not correct")
+  if (length(color)==1 & length(trans)>1) color <- rep(color,length(trans))
+  if (length(trans)==1 & length(color)>1) trans <- rep(trans,length(color))
+
+  num2hex <- function(x)
+  {
+    hex <- unlist(strsplit("0123456789ABCDEF",split=""))
+    return(paste(hex[(x-x%%16)/16+1],hex[x%%16+1],sep=""))
+  }
+  rgb <- rbind(col2rgb(color),trans)
+  res <- paste("#",apply(apply(rgb,2,num2hex),2,paste,collapse=""),sep="")
+  return(res)
+}
+
+
+plot = ggplot(mapping = aes(x=predColorI$color.ug[sub], y= predColorI$color.ri[sub],))+xlab("Color.iz")+ylab("color.ug")+ggtitle("Color.ug vs. color.ri")+geom_point(size = .3,show.legend = FALSE,col=addTrans(respBin[sub]+3,80))+geom_density_2d(color="pink")
+plot1 = ggplot(mapping = aes(x=predColorI$color.zW1[sub], y= predColorI$color.ri[sub]))+xlab("Color.zW1")+ylab("color.ri")+ggtitle("Color.zW1 vs. color.ri")+geom_point(size = .3,show.legend = FALSE,col=addTrans(respBin[sub]+3,80))+geom_density_2d(color="pink")+xlim(0.0,6)
+grid.arrange(plot,plot1,nrow=1)
+```
+
+\newline
+
+From this we see the relationship between color.iz and color.ri. This relationship is indicative of the relationship between essentially all of the other predictors. Most of them also have similar point cloud structures, as shown above, with a very slight upward or downward trend. These graphs also show the extent of overlap of stars (in green) and LRGs (in blue) in this predictor space. 
+
+
+## Predictors Compared to Redshift
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(gridExtra)
+p1 = ggplot(mapping = aes(x=predColorI$color.gr[sub], y = response[sub]))+geom_point(size = .3,show.legend = FALSE,col=respBin[sub]+3)+xlim(1,2)+geom_density_2d(color="pink")+xlab("Color.gr")+ylab("Redshift")
+
+p2 = ggplot(mapping = aes(x=predColorI$color.zW1[sub], y = response[sub]))+geom_point(size = .3,show.legend = FALSE,col=respBin[sub]+3)+geom_density_2d(color="pink")+xlim(2.5,5)+xlab("Color.zW1")+ylab("Redshift")
+
+grid.arrange(p1,p2, nrow=1)
+```
+
+ \newline
+These graphs show us getting closer to a relationship between the colors and redshift, though we are only looking at LRGs in this case. On the left shows a somewhat negative relationship bewteen color.gr and redshift when we look at only the most dense area of data points. A similar relationship was seen between color.ug, color.ri and color.iz. On the right we see a point cloud with a slight postive relationship between color.zW1 and redshift. The relationship types aren't clear, so we will explore both linear and non-linear fits with our models. We also see that the density of stars (in green) is similar to the density of LRGs (in blue) when looking at color.gr. However, when looking at color.zW1 there is a slight difference in the density of stars and LRGs, stars having somewhat lower values of color.zW1.
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(GGally)
+plt = ggpairs(predColorISub[sub,],progress = FALSE,lower = list(continuous = wrap("points", alpha = 0.3, size=0.1,color=responseBin[sub]+3),combo = wrap("dot", alpha = 0.4,size=0.2) ))
+
+suppressWarnings(print(plt))
+```
+
+
+
+\newline 
+Here we see there is a fairly strong linear correlation between mag.i and each of the colors. There also seems to be a slightly linear correlation between color.iz and color.zW1. However, the other predictors seem to have more complex correlations.
+
+This plot also shows that there are some distinct grouping effects even in two predictor spaces. There is pretty strong separation between stars and LRGs when looking at color.zW1 and all the other colors, along with color.iz compared to both color.ug and color.ri. Based on these results, when we look at multi-dimensional predictor space we can hope to find an accurate way to classify object as either Stars or LRGs.
+
+
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(MASS)
+
+
+addTrans <- function(color,trans)
+{
+  #Function borrowed from stack Overflow user Sacha Epskamp
+  # This function adds transparancy to a color.
+  # Define transparancy with an integer between 0 and 255
+  # 0 being fully transparant and 255 being fully visable
+  # Works with either color and trans a vector of equal length,
+  # or one of the two of length 1.
+
+  if (length(color)!=length(trans)&!any(c(length(color),length(trans))==1)) stop("Vector lengths not correct")
+  if (length(color)==1 & length(trans)>1) color <- rep(color,length(trans))
+  if (length(trans)==1 & length(color)>1) trans <- rep(trans,length(color))
+
+  num2hex <- function(x)
+  {
+    hex <- unlist(strsplit("0123456789ABCDEF",split=""))
+    return(paste(hex[(x-x%%16)/16+1],hex[x%%16+1],sep=""))
+  }
+  rgb <- rbind(col2rgb(color),trans)
+  res <- paste("#",apply(apply(rgb,2,num2hex),2,paste,collapse=""),sep="")
+  return(res)
+}
+
+
+ parcoord(predColorISub[sub,],col=addTrans(responseBin[sub]+3,30))
+```
+
+
+
+\newline
+This graph shows that stars, represented by the green lines, seem to converge most at color.zW1 and color.iz than the other predictors. This gives us insight into which predictors might prove to be important when classifying objects in this dataset. 
+
+## PCA
+
+We decided to use PCA to explore cutting down on the dimensionality of the data for our regression step However the screeplot suggested that using PCAs 1-5 will give us approximately 90% of the relationships in the data. This does not give significant reduction in dimensionality, so we will proceed with all the data and attempt to choose important predictors through our prediction.
+
+
+# Model
+
+```{r, include=FALSE}
+### Splitting data
+set.seed(606)
+s =  sample(nrow(predictors),.7*nrow(predictors),replace=FALSE)
+predColorR.train = predColorR[s,]
+predColorR.test = predColorR[-s,]
+predColorI.train = predColorI[s,]
+predColorI.test = predColorI[-s,]
+respClass.train = class[s]
+respClass.test = class[-s]
+respBin.train = respBin[s]
+respBin.test = respBin[-s]
+resp.train = response[s]
+resp.test = response[-s]
+
+
+#Training and validation 
+s2 =  sample(nrow(predColorR.train),.7*nrow(predColorR.train),replace=FALSE)
+predR.train = predColorR.train[s2,]
+predR.valid = predColorR.train[-s2,]
+predI.train = predColorI.train[s2,]
+predI.valid = predColorI.train[-s2,]
+class.train = respClass.train[s2]
+class.valid = respClass.train[-s2]
+bin.train = respBin.train[s2]
+bin.valid = respBin.train[-s2]
+respSub.train = resp.train[s2]
+respSub.valid = resp.train[-s2]
+
+#For regression, we only need code for Subset GAMS in this 
+
+lrgsTrain = which(respSub.train>0.01)
+lrgsValid = which(respSub.valid>0.01)
+
+predR.train = predR.train[lrgsTrain,]
+predR.valid = predR.valid[lrgsValid,]
+predI.train = predI.train[lrgsTrain,]
+predI.valid = predI.valid[lrgsValid,]
+
+respSub.train = respSub.train[lrgsTrain]
+respSub.valid = respSub.valid[lrgsValid]
+
+```
+
+
+Our final model will be a two step model, first we predict whether or not the object is a star, then we predict redshift. However, we wanted to build some intuition so we started by exploring our data through classification and regression first. 
+
+## Classification 
+Our first step was to handle the classification problem. We ran multiple classification models and focused on the models with the lowest misclassification rate (MCR). We decided to focus on random forest and gradient boosting because, as shown in the table below, they gave us the lowest MCRs. Since our data has very unbalanced classes we thought it may be important to look into balancing the classes so that our model would more accurately classify stars. However, we found this was not helpful. When we ran random forest with balanced classes for mag.i we got a larger MCR, 0.233 compared to 0.084 when we did not balance out the classes. So, we will accept that our model is inherently better at classifying LRGs due to the breakdown of our data. 
+
+
+| Model      | MCR  |
+| ------------- |:-------------| 
+| Logistic Regression|   0.0967  |
+|LDA |  0.0969    |
+| Random Forest  | 0.0864| 
+| Gradient Boosting |  0.0879 |
+|K-nearest neighbors| 0.0891 |
+|Subset Logistic Regression| 0.0968|
+
+
+## Regression
+We also needed to look into models that give us low MSEs in regression alone. Below we see our MSEs for various models. From this chart we decided to focus on GAMs and Random Forest, as we get the lowest MSEs using these models. 
+
+| Model      | MSE  |
+| ------------- |:-------------| 
+| Linear Regression  |  0.0256|
+| Subset Regression  |  0.0256 |
+ | Ridge Regression  |0.0256|
+| Lasso Regression  | 0.0256|
+|GAMs  |  0.0244|
+|GAMs with mag.i linear | 0.0244| 
+|Random Forest |  0.0245|
+
+
+
+We thought it was important to investigate if a subset GAMs would be beneficial as we noticed in the plot of our GAMs output that mag.i looked relatively linear. So we ran GAMs ANOVA leaving mag.i as a linear predictor and found it was significantly different than having all predictors non-linear. So, we tried a subset GAMs model with mag.i linear as well.
+
+```{r, include=FALSE}
+#Gams Anova mag.r
+library(gam)
+library(pander)
+d =4
+#All variable non-linear
+gam1 = gam(respSub.train~ns(color.ug,df=d)+ns(color.gr,df=d)+ns(color.ri,df=d  )+ns(color.iz,df=d)+ns(color.zW1,df=d)+ns(mag.i,df=d),data=predI.train)
+# All but one variable non-linear
+gam2 = gam(respSub.train~ns(color.ug,df=d)+ns(color.gr,df=d)+ns(color.ri,df=d)+ns(color.iz,df=d)+ns(color.zW1,df=d)+mag.i,data=predI.train)
+
+```
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+
+pander(anova(gam1,gam2,test="F"))
+
+```
+## Two Step Model Selection 
+
+After running the relevant combinations of regressor and classifier, it was important to find a metric that took into account both the MCR from our classification model, and the MSE from our regression. However, we noticed that MCR and MSE were similar in value when running our bivariate model, so we simply used the sum. Therefore, we chose the model with the lowest sum. We landed on using our data with mag.i with gradient boosting to classify objects as stars or LRGs then random forest to predict the value of redshift for these predicted LRGs. 
+
+
+| Model      | MCR  | MSE after classification | Metric (Sum)|
+| ------------- |:-------------| :-------------|:------------|
+|Random Forest and Random Forest| 0.0831 | 0.0709 |0.1540|
+|Random Forest and GAMs | 0.0831 |0.0709|0.1540|
+|Random Forest and Subset GAMs| 0.0831 | 0.0708 |.1539|
+|Boosting and GAMs | 0.0831 | 0.0663 |0.1494|
+|Boosting and Subset GAMs | 0.0831 |0.0670 |.1501|
+|Boosting and Random Forest| 0.0831 | 0.0645|0.1476|
+
+
+
+## Final Model 
+By looking at the chart above we see that the best two step model is the model using gradient boosting as a classifier and a random forest regressor with mag.i, as it has the smallest sum. 
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+##Boosting with mag.i
+# Boosting lab 10M
+library(xgboost)
+library(ggplot2)
+library(pROC)
+library(pander)
+predTrain = xgb.DMatrix(data=as.matrix(predColorI.train), label=respBin.train) 
+respTrain= xgb.DMatrix(data=as.matrix(respBin.train), label=respBin.train) 
+predTest = xgb.DMatrix(data=as.matrix(predColorI.test), label=respBin.test) 
+respTest= xgb.DMatrix(data=as.matrix(respBin.test), label=respBin.test) 
+
+set.seed(606)
+out2 = xgb.cv(predTrain, nfold =5, nrounds = 20, params=list(objective="binary:logistic"), verbose = 0 )
+bestTree = which.min(out2$evaluation_log$test_error_mean)
+boostOut = xgboost(predTrain, nfold = 5, nrounds = bestTree, params=list(objective="binary:logistic"),verbose=0)
+prob = predict(boostOut, newdata=predTest, type = "response")
+pred = ifelse(prob >.5, yes=1,no = 0)
+predClass = ifelse(pred==1, yes="LRG",no = "STAR")
+predClass= factor(predClass)
+mcr = mean(pred != respBin.test)
+#make confusion table
+
+pander(table(predClass, respClass.test))
+#ROC plot
+roc = roc(respBin.test~prob,data= predColorI.test)
+plot(roc)
+```
+\newline
+
+We see from the confusion matrix that our model, as expected, is much better at classifying LRGs over stars. The ROC plot also shows that our model balances specificity and sensitivity. Meaning, our false positive rate is low but our true positive rate is high. 
+
+
+```{r,include=FALSE}
+## Processing after boosting pre-regression
+#We will only train this model with predicted LRGs
+prodLGRTrain = predict(boostOut, newdata=predTrain)
+predLGRTrain = ifelse(prob >.5, yes=1,no = 0)
+predLGR = which(predLGRTrain==1)
+predColorI.train = predColorI.train[predLGR,]
+resp.train = resp.train[predLGR]
+
+# We will automaticlly predict a redshift of 0 is the object is a star
+# this is to use later
+starTest = which(pred==0)
+
+```
+
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(randomForest)
+library(pander)
+forest.out = randomForest(resp.train~.,data= predColorI.train)
+pred.for = predict(forest.out, newdata=predColorI.test)
+#We automatically predict 0 for those which are classified as stars 
+pred.for[starTest]=0
+mseFor = mean((pred.for-resp.test)^2)
+```
+
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+varImpPlot(forest.out)
+```
+
+\newline
+From the variable importance plot we see that color.zW1 is the most important variable, with color.iz the next most important. We also see there is not a large difference between the 3 least important variables. 
+
+```{r, warning=FALSE,message=FALSE,echo=FALSE}
+library(gridExtra)
+small =  sample(length(pred.for),.5*length(pred.for),replace=FALSE)
+pred = pred.for[small]
+
+p1 = ggplot(mapping = aes(y = pred, x = resp.test[small]))+geom_point(size=.3)+xlab("Observed Response")+ylab("Predicted Response")+ggtitle("Forest Predictor vs. Response")+xlim(0,1.5)+ylim(0,1.5)+geom_abline(mapping=aes(intercept=0,slope=1,col="red"))+geom_hline(mapping=aes(yintercept=mean(resp.train),col="blue"))+theme(legend.position="none")
+
+p2 = ggplot(mapping = aes(y = pred, x = resp.test[small]))+geom_point(size=.3)+xlab("Observed Response")+ylab("Predicted Response")+ggtitle("Forest Predictor vs. Response")+xlim(0,1.5)+ylim(0,1.5)+geom_abline(mapping=aes(intercept=0,slope=1,col="red"))+geom_hline(mapping=aes(yintercept=mean(resp.train),col="blue"))+theme(legend.position="none")+xlim(0.5,1)+ylim(0.5,1)
+
+grid.arrange(p1,p2, nrow=1)
+```
+
+\newline
+We see this model is somewhat helpful in predicting redshift. There is a clear improvement in our model over just using the mean of the training redshifts (indicated by the red line). However, due to the large mass of points in the 0.5 to 1 range, it is difficult to see this trend, so on the left we included a zoomed in verson, to show there is information in our model. There is a mass of points across the bottom of the plot, which are indicative of us misclassifying objects as stars, and predicting a redshift of 0, when they are actually LRGs.   
+
+# Conclusion 
+
+\newline
+We managed to learn a model to effectively classify objects as either stars or LRGs, then predict redshift from this. Though there is some error in classfier and error in our regression model, which is compounded when we put the two models together, we still get meaningful results. We are able to classify objects with a misclassification rate of only 8.31% and an MSE of  0.06445, 
